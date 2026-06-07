@@ -298,7 +298,7 @@ function AppContent() {
                     }
                   } else {
                     // Just a regular check for updates
-                    registration.update();
+                    registration.update().catch(() => {});
                   }
                 };
                 
@@ -308,7 +308,7 @@ function AppContent() {
                 const handleVisibilityChange = () => {
                   if (document.visibilityState === 'visible') {
                     console.log('[PWA] App visible -> checking for updates');
-                    registration.update();
+                    registration.update().catch(() => {});
                   }
                 };
                 document.addEventListener('visibilitychange', handleVisibilityChange);
