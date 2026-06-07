@@ -1,0 +1,40 @@
+{
+  "name": "plannerok",
+  "private": true,
+  "version": "2.6.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx server.ts",
+    "start": "node server.ts",
+    "build": "vite build",
+    "preview": "vite preview",
+    "clean": "rm -rf dist",
+    "lint": "tsc --noEmit && eslint ."
+  },
+  "dependencies": {
+    "@google/genai": "^1.51.0",
+    "@types/express": "^5.0.6",
+    "express": "^5.2.1",
+    "lucide-react": "^0.546.0",
+    "motion": "^12.23.24",
+    "react": "^19.0.1",
+    "react-dom": "^19.0.1",
+    "react-markdown": "^10.1.0",
+    "tsx": "^4.21.0",
+    "uuid": "^14.0.0",
+    "vite": "^6.2.3"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@tailwindcss/vite": "^4.1.14",
+    "@types/react": "^19.0.8",
+    "@types/react-dom": "^19.0.3",
+    "@vitejs/plugin-react": "^5.0.4",
+    "autoprefixer": "^10.4.21",
+    "eslint": "^9.39.4",
+    "globals": "^17.5.0",
+    "tailwindcss": "^4.1.14",
+    "typescript": "~5.8.2",
+    "typescript-eslint": "^8.59.1"
+  }
+}
