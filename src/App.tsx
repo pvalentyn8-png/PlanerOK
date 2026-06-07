@@ -57,13 +57,13 @@ const STORAGE_KEYS: Record<TabType | 'settings' | 'version', string> = {
   version: 'plannerok_version_v4',
 };
 
-const APP_VERSION = '2.6.0';
+const APP_VERSION = '2.7.0';
 const CHANGE_LOG = [
-  'PlannerOk 2.6.0: AI Буст Енергії ⚡️',
-  'Feature: Додано кнопку "Отримати буст" для миттєвої мотивації від AI',
-  'AI: Оновлено промпти для більш влучних та енергійних порад',
-  'UI: Покращено візуалізацію блоку мотивації з новими анімаціями',
-  'Fix: Оптимізовано кешування AI-аналізу для різних вкладок'
+  'PlannerOk 2.7.0: Dino 🦖 та Мудра Мотивація Валіка ⚡️',
+  'Feature: Додано відому червону мережу Dino із завантаженням реальних гарячих акцій через Gemini AI',
+  'UI/UX: Створено плавний свайп вниз для комфортного гортання абсолютно всіх пропозицій в реальному часі',
+  'AI: Замінено мотивацію від AI на мудрі та глибокі настанови від Валіка (категорія змін особистості та саморозвитку)',
+  'L10n: Повна підтримка української та польської адаптації порад від Валіка для вашого особистісного зростання!'
 ];
 
 const APP_FEATURES = [
@@ -630,7 +630,7 @@ function AppContent() {
       emptyTasks: 'Справ поки немає — додай першу!',
       emptyShop: 'Список покупок порожній',
       emptyJournal: 'Журнал порожній — збережи свій перший рецепт!',
-      motivation: 'Мотивація від AI',
+      motivation: 'Мотивація від Валіка',
       updateAnalysis: 'Оновити аналіз',
       totalEstimated: 'Орієнтовна сума:',
       retailers: 'Середня ціна (Lidl, Biedronka)',
@@ -652,8 +652,8 @@ function AppContent() {
       at: 'о',
       estimating: 'Оцінюємо...',
       retry: 'Повторити',
-      aiAnalyzing: 'AI аналізує твій день...',
-      aiHint: 'Натисніть для отримання енергії на сьогодні! ✨',
+      aiAnalyzing: 'Валік аналізує твій день...',
+      aiHint: 'Отримати мудру пораду від Валіка! ✨',
       getBoost: 'Отримати буст!',
       recipeTitle: 'Ваш ШІ Рецепт',
       chefThinking: 'Шеф-кухар Gemini придумує щось смачненьке...',
@@ -689,7 +689,7 @@ function AppContent() {
       emptyTasks: 'Brak zadań - dodaj pierwsze!',
       emptyShop: 'Lista zakupów jest pusta',
       emptyJournal: 'Dziennik jest pusty - zapisz swój pierwszy przepis!',
-      motivation: 'Motywacja AI',
+      motivation: 'Motywacja od Walika',
       updateAnalysis: 'Aktualizuj analizę',
       totalEstimated: 'Szacunkowa suma:',
       retailers: 'Średnia cena (Lidl, Biedronka)',
@@ -711,8 +711,8 @@ function AppContent() {
       at: 'o',
       estimating: 'Szacowanie...',
       retry: 'Powtórz',
-      aiAnalyzing: 'AI analizuje Twój dzień...',
-      aiHint: 'Kliknij, aby otrzymać energię na dziś! ✨',
+      aiAnalyzing: 'Walik analizuje Twój dzień...',
+      aiHint: 'Zdobądź mądrą radę od Walika! ✨',
       getBoost: 'Zdobądź doładowanie!',
       recipeTitle: 'Twój AI Przepis',
       chefThinking: 'Szef kuchni Gemini wymyśla coś pysznego...',
@@ -1061,7 +1061,7 @@ function AppContent() {
     if (tasks.length > 0 || shopItems.length > 0 || savedRecipes.length > 0) {
       runMotivation();
     }
-  }, [activeTab]);
+  }, [activeTab, language]);
 
   const runMotivation = async (currentTasks?: Item[], currentShop?: Item[], currentRecipes?: Item[], force: boolean = false) => {
     setIsAnalyzing(true);
@@ -1069,7 +1069,7 @@ function AppContent() {
     const tShop = (currentShop || shopItems).filter(t => !t.done).map(t => t.text);
     const tRecipes = (currentRecipes || savedRecipes).map(t => t.text);
     
-    const advice = await analyzeStatus(tTasks, tShop, tRecipes, activeTab, force);
+    const advice = await analyzeStatus(tTasks, tShop, tRecipes, activeTab, force, language);
     setMotivation(advice);
     setIsAnalyzing(false);
   };
@@ -1429,6 +1429,7 @@ function AppContent() {
                         { id: 'all', label: language === 'ua' ? 'Всі акції' : 'Wszystkie' },
                         { id: 'Biedronka', label: 'Biedronka 🐞' },
                         { id: 'Lidl', label: 'Lidl 🛒' },
+                        { id: 'Dino', label: 'Dino 🦖' },
                         { id: 'Żabka', label: 'Żabka 💚' }
                       ].map(storeOpt => (
                         <button
@@ -1447,7 +1448,7 @@ function AppContent() {
 
                     {/* Category Filter Chips */}
                     <div className="flex gap-1 overflow-x-auto pb-1 select-none">
-                      {['всі', 'Бакалія', "М'ясо", 'Молочні продукти', 'Напої', 'Овочі та фрукти', 'Снеки'].map(cat => (
+                      {['всі', 'Бакалія', "М'ясо", 'Молочні продукти', 'Напої', 'Овочі та фрукти', 'Снеки', 'Солодощі'].map(cat => (
                         <button
                           key={cat}
                           onClick={() => setPromoCategory(cat)}
@@ -1489,104 +1490,119 @@ function AppContent() {
                         <p className="text-xs text-text-soft text-center max-w-xs">{t.detectingOffers}</p>
                       </div>
                     ) : (
-                      <div className="space-y-3">
-                        {(() => {
-                          const filteredPromos = promotions.filter(p => {
-                            if (promoStoreFilter === 'all') return true;
-                            return p.store.toLowerCase() === promoStoreFilter.toLowerCase();
-                          });
+                      <div className="flex flex-col gap-1.5">
+                        {/* Swipe down text hint */}
+                        <div className="flex items-center justify-between text-[10px] text-text-soft/75 font-black uppercase tracking-tight px-1.5 select-none py-1">
+                          <span className="flex items-center gap-1">
+                            <span>🔥</span>
+                            <span>{language === 'ua' ? 'Гортайте вниз для перегляду всіх акцій' : 'Przewiń w dół dla wszystkich promocji'}</span>
+                          </span>
+                          <span className="animate-bounce">⬇️</span>
+                        </div>
 
-                          if (filteredPromos.length === 0) {
-                            return (
-                              <div className="text-center py-12 text-text-soft italic text-xs">
-                                {language === 'ua' ? 'Не знайдено акцій у цій категорії. Натисніть "Оновити ШІ" для завантаження.' : 'Brak promocji w tej kategorii. Kliknij "Skanuj AI", aby wyszukać.'}
-                              </div>
-                            );
-                          }
+                        {/* Scroll Container enabling smooth swipe and scroll physics */}
+                        <div className="space-y-3 max-h-[520px] overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-rose/20 scrollbar-track-transparent overscroll-y-contain touch-pan-y rounded-2xl pb-6">
+                          {(() => {
+                            const filteredPromos = promotions.filter(p => {
+                              if (promoStoreFilter === 'all') return true;
+                              return p.store.toLowerCase() === promoStoreFilter.toLowerCase();
+                            });
 
-                          return filteredPromos.map((promo) => {
-                            const isLidl = promo.store.toLowerCase() === 'lidl';
-                            const isBiedronka = promo.store.toLowerCase() === 'biedronka';
-                            
-                            const storeTheme = isLidl 
-                              ? { border: 'border-blue-200/40', badge: 'bg-blue-50 text-blue-700 border-blue-200', tag: 'Lidl' }
-                              : isBiedronka
-                                ? { border: 'border-amber-200/40', badge: 'bg-amber-50 text-amber-850 border-amber-200', tag: 'Biedronka 🐞' }
-                                : { border: 'border-emerald-200/40', badge: 'bg-emerald-50 text-emerald-850 border-emerald-200', tag: 'Żabka 💚' };
+                            if (filteredPromos.length === 0) {
+                              return (
+                                <div className="text-center py-12 text-text-soft italic text-xs">
+                                  {language === 'ua' ? 'Не знайдено акцій у цій категорії. Натисніть "Оновити ШІ" для завантаження.' : 'Brak promocji w tej kategorii. Kliknij "Skanuj AI", aby wyszukać.'}
+                                </div>
+                              );
+                            }
 
-                            return (
-                              <motion.div
-                                layout
-                                key={promo.id}
-                                initial={{ opacity: 0, scale: 0.95 }}
-                                animate={{ opacity: 1, scale: 1 }}
-                                className={`p-4 glass rounded-2xl flex flex-col gap-2.5 border ${storeTheme.border} relative shadow-sm hover:shadow-md transition-all`}
-                              >
-                                <div className="flex justify-between items-start">
-                                  <div className="flex flex-col gap-1">
-                                    <div className="flex items-center gap-1.5 flex-wrap">
-                                      <span className={`px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-tight border ${storeTheme.badge}`}>
-                                        {storeTheme.tag}
-                                      </span>
-                                      <span className="px-1.5 py-0.5 rounded-lg bg-rose/5 text-deep-rose text-[9px] font-black uppercase tracking-tight border border-rose/10">
-                                        {promo.discountText}
-                                      </span>
+                            return filteredPromos.map((promo) => {
+                              const isLidl = promo.store.toLowerCase() === 'lidl';
+                              const isBiedronka = promo.store.toLowerCase() === 'biedronka';
+                              const isDino = promo.store.toLowerCase() === 'dino';
+                              
+                              const storeTheme = isLidl 
+                                ? { border: 'border-blue-200/40', badge: 'bg-blue-50 text-blue-700 border-blue-200', tag: 'Lidl' }
+                                : isBiedronka
+                                  ? { border: 'border-amber-200/40', badge: 'bg-amber-50 text-amber-850 border-amber-200', tag: 'Biedronka 🐞' }
+                                  : isDino
+                                    ? { border: 'border-red-200/35', badge: 'bg-red-50 text-red-800 border-red-250', tag: 'Dino 🦖' }
+                                    : { border: 'border-emerald-200/40', badge: 'bg-emerald-50 text-emerald-850 border-emerald-200', tag: 'Żabka 💚' };
+
+                              return (
+                                <motion.div
+                                  layout
+                                  key={promo.id}
+                                  initial={{ opacity: 0, scale: 0.95 }}
+                                  animate={{ opacity: 1, scale: 1 }}
+                                  className={`p-4 glass rounded-2xl flex flex-col gap-2.5 border ${storeTheme.border} relative shadow-sm hover:shadow-md transition-all`}
+                                >
+                                  <div className="flex justify-between items-start">
+                                    <div className="flex flex-col gap-1">
+                                      <div className="flex items-center gap-1.5 flex-wrap">
+                                        <span className={`px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-tight border ${storeTheme.badge}`}>
+                                          {storeTheme.tag}
+                                        </span>
+                                        <span className="px-1.5 py-0.5 rounded-lg bg-rose/5 text-deep-rose text-[9px] font-black uppercase tracking-tight border border-rose/10">
+                                          {promo.discountText}
+                                        </span>
+                                      </div>
+                                      <h3 className="text-sm font-bold text-text-main mt-0.5">{promo.product}</h3>
                                     </div>
-                                    <h3 className="text-sm font-bold text-text-main mt-0.5">{promo.product}</h3>
+
+                                    <div className="text-right shrink-0">
+                                      <p className="text-base font-black text-deep-rose tabular-nums leading-none">
+                                        {promo.price.toFixed(2)} <span className="text-xs font-bold">PLN</span>
+                                      </p>
+                                      <p className="text-xs text-text-soft/60 strike line-through font-medium tabular-nums mt-0.5">
+                                        {promo.originalPrice.toFixed(2)} PLN
+                                      </p>
+                                    </div>
                                   </div>
 
-                                  <div className="text-right shrink-0">
-                                    <p className="text-base font-black text-deep-rose tabular-nums leading-none">
-                                      {promo.price.toFixed(2)} <span className="text-xs font-bold">PLN</span>
-                                    </p>
-                                    <p className="text-xs text-text-soft/60 strike line-through font-medium tabular-nums mt-0.5">
-                                      {promo.originalPrice.toFixed(2)} PLN
-                                    </p>
-                                  </div>
-                                </div>
+                                  <div className="flex justify-between items-center pt-2.5 border-t border-rose/10 mt-1">
+                                    <div className="flex items-center gap-1.5 text-text-soft/80 text-[10px]">
+                                      <Calendar size={11} className="text-orange-400" />
+                                      <span>{t.validityPeriod}: <strong className="font-semibold">{promo.startDate.split('-').reverse().slice(0,2).join('.')} - {promo.endDate.split('-').reverse().slice(0,2).join('.')}</strong></span>
+                                    </div>
 
-                                <div className="flex justify-between items-center pt-2.5 border-t border-rose/10 mt-1">
-                                  <div className="flex items-center gap-1.5 text-text-soft/80 text-[10px]">
-                                    <Calendar size={11} className="text-orange-400" />
-                                    <span>{t.validityPeriod}: <strong className="font-semibold">{promo.startDate.split('-').reverse().slice(0,2).join('.')} - {promo.endDate.split('-').reverse().slice(0,2).join('.')}</strong></span>
-                                  </div>
-
-                                  <button
-                                    onClick={() => {
-                                      const textToAdd = `${promo.product} (${promo.store})`;
-                                      const newItem: Item = {
-                                        id: uuidv4(),
-                                        text: textToAdd,
-                                        done: false,
-                                        added: new Date().toISOString(),
-                                        price: promo.price,
-                                        type: 'shop'
-                                      };
-                                      setShopItems(prev => {
-                                        const next = [newItem, ...prev];
-                                        localStorage.setItem(STORAGE_KEYS.shop, JSON.stringify(next));
-                                        return next;
-                                      });
-                                      
-                                      if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
-                                        new Notification(language === 'ua' ? 'Додано до кошика! 🛒' : 'Dodano do koszyka! 🛒', {
-                                          body: `${promo.product} за ${promo.price} PLN додано.`,
-                                          icon: '/icon.svg'
+                                    <button
+                                      onClick={() => {
+                                        const textToAdd = `${promo.product} (${promo.store})`;
+                                        const newItem: Item = {
+                                          id: uuidv4(),
+                                          text: textToAdd,
+                                          done: false,
+                                          added: new Date().toISOString(),
+                                          price: promo.price,
+                                          type: 'shop'
+                                        };
+                                        setShopItems(prev => {
+                                          const next = [newItem, ...prev];
+                                          localStorage.setItem(STORAGE_KEYS.shop, JSON.stringify(next));
+                                          return next;
                                         });
-                                      } else {
-                                        alert(language === 'ua' ? 'Продукт додано до списку покупок!' : 'Produkt dodany do listy zakupów!');
-                                      }
-                                    }}
-                                    className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-600 text-[10px] font-black uppercase tracking-tight rounded-xl flex items-center gap-1.5 border border-emerald-100 active:scale-95 transition-all shadow-xs"
-                                  >
-                                    <ShoppingCart size={11} />
-                                    {language === 'ua' ? 'В кошик' : 'Kup'}
-                                  </button>
-                                </div>
-                              </motion.div>
-                            );
-                          });
-                        })()}
+                                        
+                                        if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+                                          new Notification(language === 'ua' ? 'Додано до кошика! 🛒' : 'Dodano do koszyka! 🛒', {
+                                            body: `${promo.product} за ${promo.price} PLN додано.`,
+                                            icon: '/icon.svg'
+                                          });
+                                        } else {
+                                          alert(language === 'ua' ? 'Продукт додано до списку покупок!' : 'Produkt dodany do listy zakupów!');
+                                        }
+                                      }}
+                                      className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-600 text-[10px] font-black uppercase tracking-tight rounded-xl flex items-center gap-1.5 border border-emerald-100 active:scale-95 transition-all shadow-xs"
+                                    >
+                                      <ShoppingCart size={11} />
+                                      {language === 'ua' ? 'В кошик' : 'Kup'}
+                                    </button>
+                                  </div>
+                                </motion.div>
+                              );
+                            });
+                          })()}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -1760,6 +1776,7 @@ function AppContent() {
                         {[
                           { id: 'Lidl', label: 'Lidl 🛒' },
                           { id: 'Biedronka', label: 'Biedronka 🐞' },
+                          { id: 'Dino', label: 'Dino 🦖' },
                           { id: 'Żabka', label: 'Żabka 💚' },
                           { id: 'Auchan', label: 'Auchan 🔴' },
                           { id: 'Kaufland', label: 'Kaufland 📦' },
@@ -1813,6 +1830,7 @@ function AppContent() {
                               let emoji = '🛒';
                               if (storeName.toLowerCase().includes('biedronka')) emoji = '🐞';
                               else if (storeName.toLowerCase().includes('zabka') || storeName.toLowerCase().includes('żabka')) emoji = '💚';
+                              else if (storeName.toLowerCase().includes('dino')) emoji = '🦖';
                               else if (storeName.toLowerCase().includes('auchan')) emoji = '🔴';
                               else if (storeName.toLowerCase().includes('kaufland')) emoji = '📦';
                               else if (storeName.toLowerCase().includes('carrefour')) emoji = '🔵';

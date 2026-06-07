@@ -93,24 +93,25 @@ export async function analyzeStatus(
   shop: string[],
   recipes: string[],
   activeTab: string,
-  force: boolean = false
+  force: boolean = false,
+  language: 'ua' | 'pl' = 'ua'
 ): Promise<string> {
-  const cacheKey = `${activeTab}|${tasks.sort().join(",")}|${shop.sort().join(",")}|${recipes.length}`;
+  const cacheKey = `${activeTab}|${tasks.sort().join(",")}|${shop.sort().join(",")}|${recipes.length}|${language}`;
   if (!force && cache.status.has(cacheKey)) return cache.status.get(cacheKey)!;
 
   try {
     const response = await fetch("/api/ai/analyze-status", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tasks, shop, recipes, activeTab })
+      body: JSON.stringify({ tasks, shop, recipes, activeTab, language })
     });
     const data = await response.json();
-    const result = data.result || "Продовжуй у тому ж дусі!";
+    const result = data.result || (language === 'ua' ? "Ти на правильному шляху! 💪" : "Jesteś na dobrej drodze! 💪");
     cacheSet(cache.status, cacheKey, result);
     return result;
   } catch (error) {
     console.error("AI Analysis Client Fetch Error:", error);
-    return "Ти на правильному шляху! 💪";
+    return language === 'ua' ? "Ти на правильному шляху! 💪" : "Jesteś na dobrej drodze! 💪";
   }
 }
 
