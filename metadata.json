@@ -1,5 +1,6 @@
 {
   "name": "PlannerOk",
   "description": "Елегантний планувальник PlannerOk для справ та покупок з календарем, аналізом мотивації від AI та порівнянням цін у польських супермаркетах.",
-  "requestFramePermissions": []
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
