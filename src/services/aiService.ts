@@ -3,6 +3,7 @@ const cache = {
   status: new Map<string, string>(),
   prices: new Map<string, Record<string, number>>(),
   recipes: new Map<string, string>(),
+  compare: new Map<string, any>(),
 };
 
 const MAX_CACHE_SIZE = 50;
@@ -18,6 +19,39 @@ function cacheSet<T>(map: Map<string, T>, key: string, value: T) {
 // =============================================================================
 // ПУБЛІЧНІ ФУНКЦІЇ ДЛЯ КЛІЄНТА (ЗВЕРНЕННЯ ДО НАШОГО EXРRESS API)
 // =============================================================================
+
+export interface StoreComparison {
+  cheaperStore: 'Biedronka' | 'Lidl';
+  biedronkaTotal: number;
+  lidlTotal: number;
+  differencePLN: number;
+  differencePercent: number;
+  explanation: string;
+}
+
+export async function compareStores(items: string[], force: boolean = false): Promise<StoreComparison | null> {
+  if (items.length === 0) return null;
+
+  const cacheKey = [...items].sort().join("|");
+  if (!force && cache.compare.has(cacheKey)) return cache.compare.get(cacheKey)!;
+
+  try {
+    const response = await fetch("/api/ai/compare-stores", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ items })
+    });
+    const data = await response.json();
+    const result = data.result || null;
+    if (result) {
+      cacheSet(cache.compare, cacheKey, result);
+    }
+    return result;
+  } catch (error) {
+    console.error("compareStores Client Fetch Error:", error);
+    return null;
+  }
+}
 
 export async function analyzeStatus(
   tasks: string[],
@@ -93,4 +127,5 @@ export function clearAICache() {
   cache.status.clear();
   cache.prices.clear();
   cache.recipes.clear();
+  cache.compare.clear();
 }

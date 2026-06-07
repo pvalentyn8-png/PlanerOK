@@ -29,7 +29,7 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
-import { analyzeStatus, estimatePrices, generateRecipe } from './services/aiService';
+import { analyzeStatus, estimatePrices, generateRecipe, compareStores, type StoreComparison } from './services/aiService';
 import Markdown from 'react-markdown';
 
 interface Item {
@@ -110,6 +110,8 @@ function AppContent() {
   const [tasks, setTasks] = useState<Item[]>([]);
   const [shopItems, setShopItems] = useState<Item[]>([]);
   const [savedRecipes, setSavedRecipes] = useState<Item[]>([]);
+  const [storeComparison, setStoreComparison] = useState<StoreComparison | null>(null);
+  const [isComparingStores, setIsComparingStores] = useState(false);
   const [theme, setTheme] = useState<'rose' | 'mint' | 'lavender' | 'sky' | 'midnight' | 'plum'>('rose');
   const [language, setLanguage] = useState<'ua' | 'pl'>('ua');
   const [inputValue, setInputValue] = useState('');
@@ -920,6 +922,32 @@ function AppContent() {
     }
   };
 
+  const runStoreComparison = async (force: boolean = false) => {
+    const activeUncompletedShopItems = shopItems.filter(i => !i.done).map(i => i.text);
+    if (activeUncompletedShopItems.length === 0) {
+      setStoreComparison(null);
+      return;
+    }
+    setIsComparingStores(true);
+    try {
+      const res = await compareStores(activeUncompletedShopItems, force);
+      if (res) {
+        setStoreComparison(res);
+      }
+    } catch (e) {
+      console.error("Store comparison error:", e);
+    } finally {
+      setIsComparingStores(false);
+    }
+  };
+
+  useEffect(() => {
+    const activeUncompleted = shopItems.filter(i => !i.done);
+    if (activeUncompleted.length === 0) {
+      setStoreComparison(null);
+    }
+  }, [shopItems]);
+
   useEffect(() => {
     if (activeTab === 'shop') {
       updateAllPrices();
@@ -1408,23 +1436,116 @@ function AppContent() {
           {total > 0 && activeTab !== 'journal' && (
             <div className="space-y-3 pt-4 border-t border-rose/10">
               {activeTab === 'shop' && (
-                <div className="flex items-center justify-between px-1">
-                  <div className="flex items-center gap-2 text-text-main font-bold">
-                    <Store size={16} className="text-deep-rose" />
-                    <div className="flex flex-col">
-                      <span className="text-sm">{t.totalEstimated}</span>
-                      <span className="text-[9px] font-normal text-text-soft uppercase tracking-wider">{t.retailers}</span>
+                <>
+                  <div className="flex items-center justify-between px-1">
+                    <div className="flex items-center gap-2 text-text-main font-bold">
+                      <Store size={16} className="text-deep-rose" />
+                      <div className="flex flex-col">
+                        <span className="text-sm">{t.totalEstimated}</span>
+                        <span className="text-[9px] font-normal text-text-soft uppercase tracking-wider">{t.retailers}</span>
+                      </div>
                     </div>
+                    <motion.div
+                      key={`total-${shoppingTotal}`}
+                      initial={{ scale: 0.8 }}
+                      animate={{ scale: 1 }}
+                      className="text-lg font-serif font-black text-deep-rose"
+                    >
+                      {shoppingTotal.toFixed(2)} PLN
+                    </motion.div>
                   </div>
-                  <motion.div
-                    key={`total-${shoppingTotal}`}
-                    initial={{ scale: 0.8 }}
-                    animate={{ scale: 1 }}
-                    className="text-lg font-serif font-black text-deep-rose"
-                  >
-                    {shoppingTotal.toFixed(2)} PLN
-                  </motion.div>
-                </div>
+
+                  <div className="mt-4 p-4 rounded-2xl bg-linear-to-br from-amber-50/60 to-orange-50/60 border border-orange-100 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="text-orange-500 animate-pulse" size={16} />
+                        <span className="text-xs font-black uppercase text-orange-800 tracking-wider">
+                          {language === 'ua' ? 'Порівняння Biedronka vs Lidl від ШІ' : 'Porównanie Biedronka vs Lidl od AI'}
+                        </span>
+                      </div>
+                      
+                      {storeComparison && (
+                        <button
+                          onClick={() => runStoreComparison(true)}
+                          disabled={isComparingStores}
+                          className="flex items-center gap-1 px-2.5 py-1 bg-orange-200/50 hover:bg-orange-200 text-orange-800 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all disabled:opacity-50"
+                        >
+                          {isComparingStores ? <Loader2 size={10} className="animate-spin" /> : <RefreshCw size={10} />}
+                          {language === 'ua' ? 'Оновити' : 'Odśwież'}
+                        </button>
+                      )}
+                    </div>
+
+                    {isComparingStores ? (
+                      <div className="flex flex-col items-center justify-center py-4 text-center">
+                        <Loader2 size={18} className="animate-spin text-orange-500 mb-1" />
+                        <span className="text-[10px] uppercase font-black tracking-wider text-orange-800/60">
+                          {language === 'ua' ? 'Gemini аналізує ціни...' : 'Gemini analizuje ceny...'}
+                        </span>
+                      </div>
+                    ) : storeComparison ? (
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-2 gap-3 text-center">
+                          {/* Biedronka */}
+                          <div className={`p-3 rounded-xl border transition-all ${storeComparison.cheaperStore === 'Biedronka' ? 'bg-emerald-500/10 border-emerald-300 ring-2 ring-emerald-500/30' : 'bg-white/40 border-gray-100'}`}>
+                            <div className="text-[10px] font-black uppercase text-gray-500 flex items-center justify-center gap-1">
+                              🐞 Biedronka
+                              {storeComparison.cheaperStore === 'Biedronka' && (
+                                <span className="bg-emerald-100 text-emerald-800 text-[8px] px-1 py-0.2 rounded-sm font-black whitespace-nowrap">
+                                  {language === 'ua' ? 'ДЕШЕВШЕ' : 'TANIEJ'}
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-base font-serif font-black text-gray-800 mt-1">
+                              {storeComparison.biedronkaTotal.toFixed(2)} PLN
+                            </div>
+                          </div>
+
+                          {/* Lidl */}
+                          <div className={`p-3 rounded-xl border transition-all ${storeComparison.cheaperStore === 'Lidl' ? 'bg-emerald-500/10 border-emerald-300 ring-2 ring-emerald-500/30' : 'bg-white/40 border-gray-100'}`}>
+                            <div className="text-[10px] font-black uppercase text-gray-500 flex items-center justify-center gap-1">
+                              🟡 Lidl
+                              {storeComparison.cheaperStore === 'Lidl' && (
+                                <span className="bg-emerald-100 text-emerald-800 text-[8px] px-1 py-0.2 rounded-sm font-black whitespace-nowrap">
+                                  {language === 'ua' ? 'ДЕШЕВШЕ' : 'TANIEJ'}
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-base font-serif font-black text-gray-800 mt-1">
+                              {storeComparison.lidlTotal.toFixed(2)} PLN
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between px-1 text-xs">
+                          <span className="font-bold text-gray-600">
+                            {language === 'ua' ? 'Різниця:' : 'Różnica:'}
+                          </span>
+                          <span className="font-serif font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100">
+                             {storeComparison.differencePLN.toFixed(2)} PLN (~{storeComparison.differencePercent}%)
+                          </span>
+                        </div>
+
+                        <div className="p-3 bg-white/70 rounded-xl text-[11px] leading-relaxed text-gray-700 italic border border-orange-50/50">
+                          {storeComparison.explanation}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center py-4 bg-white/40 rounded-xl border border-dashed border-orange-200">
+                        <button
+                          onClick={() => runStoreComparison(false)}
+                          className="flex items-center gap-2 py-2 px-6 bg-linear-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-black uppercase text-[10px] tracking-widest rounded-xl shadow-md transition-all active:scale-95"
+                        >
+                          <Sparkles size={12} />
+                          {language === 'ua' ? 'Порівняти ціни Biedronka та Lidl' : 'Porównaj ceny Biedronka i Lidl'}
+                        </button>
+                        <span className="text-[9px] text-orange-800/60 mt-1.5 uppercase font-bold tracking-tight">
+                          {language === 'ua' ? 'Аналіз кошика за допомогою ШІ' : 'Analiza koszyka przez AI'}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </>
               )}
 
               <div className="flex items-center justify-between">

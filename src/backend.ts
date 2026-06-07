@@ -148,4 +148,69 @@ app.post("/api/ai/generate-recipe", async (req, res) => {
   }
 });
 
+// Ендпоінт порівняння кошика у Biedronka та Lidl
+app.post("/api/ai/compare-stores", async (req, res) => {
+  const { items } = req.body;
+  if (!ai || !items || items.length === 0) {
+    return res.json({ result: null });
+  }
+
+  try {
+    const system = `Ти — експерт з оптимізації витрат у польських супермаркетах Biedronka та Lidl.
+    Твоє завдання — проаналізувати список продуктів, оцінити їх сумарну вартість окремо для Biedronka та окремо для Lidl, визначити де дешевше, розрахувати різницю і дати коротку пораду українською мовою.
+    Використовуй реальні середні ціни в PLN за останні місяці.
+    Відповідай виключно форматом JSON за схемою. Пояснення (explanation) має бути коротким, дотепним і корисним українською мовою (до 30-40 слів).`;
+
+    const user = `Проаналізуй та порівняй кошик продуктів для Biedronka та Lidl: ${items.join(", ")}`;
+
+    const schema: any = {
+      type: Type.OBJECT,
+      properties: {
+        cheaperStore: { 
+          type: Type.STRING, 
+          description: "Назва дешевшого магазину: 'Biedronka' або 'Lidl'" 
+        },
+        biedronkaTotal: { 
+          type: Type.NUMBER, 
+          description: "Повна вартість кошика в Biedronka в PLN" 
+        },
+        lidlTotal: { 
+          type: Type.NUMBER, 
+          description: "Повна вартість кошика в Lidl в PLN" 
+        },
+        differencePLN: { 
+          type: Type.NUMBER, 
+          description: "Різниця вартостей у PLN (додатне число)" 
+        },
+        differencePercent: { 
+          type: Type.NUMBER, 
+          description: "Різниця у відсотках (наприклад, 12)" 
+        },
+        explanation: { 
+          type: Type.STRING, 
+          description: "Коротке пояснення українською мовою (де вигідніше купувати м'ясо або овочі з цього списку) - макс 35 слів." 
+        }
+      },
+      required: ["cheaperStore", "biedronkaTotal", "lidlTotal", "differencePLN", "differencePercent", "explanation"],
+    };
+
+    const response = await ai.models.generateContent({ 
+      model: MODEL_NAME,
+      contents: user,
+      config: {
+        systemInstruction: system,
+        responseMimeType: "application/json",
+        responseSchema: schema,
+        temperature: 0.2,
+      }
+    });
+
+    const data = JSON.parse(response.text || "null");
+    res.json({ result: data });
+  } catch (error) {
+    console.error("compare-stores error:", error);
+    res.json({ result: null });
+  }
+});
+
 export default app;
