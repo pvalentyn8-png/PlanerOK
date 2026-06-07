@@ -29,7 +29,7 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
-import { analyzeStatus, estimatePrices, generateRecipe, compareStores, type StoreComparison } from './services/aiService';
+import { analyzeStatus, estimatePrices, generateRecipe, compareStores, getPromotions, type StoreComparison, type Promotion } from './services/aiService';
 import Markdown from 'react-markdown';
 
 interface Item {
@@ -46,12 +46,13 @@ interface Item {
   recipeContent?: string;
 }
 
-type TabType = 'tasks' | 'shop' | 'journal';
+type TabType = 'tasks' | 'shop' | 'journal' | 'offers';
 
 const STORAGE_KEYS: Record<TabType | 'settings' | 'version', string> = {
   tasks: 'plannerok_tasks_v4',
   shop: 'plannerok_shop_v4',
   journal: 'plannerok_journal_v4',
+  offers: 'plannerok_offers_v4',
   settings: 'plannerok_settings_v4',
   version: 'plannerok_version_v4',
 };
@@ -110,8 +111,29 @@ function AppContent() {
   const [tasks, setTasks] = useState<Item[]>([]);
   const [shopItems, setShopItems] = useState<Item[]>([]);
   const [savedRecipes, setSavedRecipes] = useState<Item[]>([]);
+  const [promotions, setPromotions] = useState<Promotion[]>([]);
+  const [promoCategory, setPromoCategory] = useState<string>("всі");
+  const [isFetchingPromotions, setIsFetchingPromotions] = useState(false);
+  const [promoStoreFilter, setPromoStoreFilter] = useState<string>("all"); // 'all', 'Lidl', 'Biedronka', 'Żabka'
   const [storeComparison, setStoreComparison] = useState<StoreComparison | null>(null);
   const [isComparingStores, setIsComparingStores] = useState(false);
+  const [selectedCompareStores, setSelectedCompareStores] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('plannerok_selected_compare_stores');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    return ["Lidl", "Biedronka"];
+  });
+
+  useEffect(() => {
+    localStorage.setItem('plannerok_selected_compare_stores', JSON.stringify(selectedCompareStores));
+  }, [selectedCompareStores]);
+
   const [theme, setTheme] = useState<'rose' | 'mint' | 'lavender' | 'sky' | 'midnight' | 'plum'>('rose');
   const [language, setLanguage] = useState<'ua' | 'pl'>('ua');
   const [inputValue, setInputValue] = useState('');
@@ -120,6 +142,70 @@ function AppContent() {
   const [currentTime] = useState(new Date());
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>('default');
   const [installPrompt, setInstallPrompt] = useState<any>(null);
+
+  // Auto-fetch promotions when category or tab changes
+  useEffect(() => {
+    if (activeTab === 'offers') {
+      const fetchPromo = async () => {
+        setIsFetchingPromotions(true);
+        try {
+          const res = await getPromotions(promoCategory);
+          setPromotions(res);
+        } catch (err) {
+          console.error("Fetch promotions failed:", err);
+        } finally {
+          setIsFetchingPromotions(false);
+        }
+      };
+      fetchPromo();
+    }
+  }, [activeTab, promoCategory]);
+
+  const importData = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const json = JSON.parse(e.target?.result as string);
+        
+        // Resolve tasks with various fallback key names from older versions or other backups
+        const resolvedTasks = json.tasks || json.todos || json.todo || json.savedTasks || json.plannerok_tasks_v4 || json.plannerok_tasks_v3 || json.plannerok_tasks_v2 || json.plannerok_tasks_v1 || json.plannerok_tasks || json.taskList || json.tasksList;
+        if (resolvedTasks && Array.isArray(resolvedTasks)) {
+          setTasks(resolvedTasks);
+          localStorage.setItem(STORAGE_KEYS.tasks, JSON.stringify(resolvedTasks));
+        }
+
+        // Resolve shopItems with fallbacks
+        const resolvedShopItems = json.shopItems || json.shop || json.savedShop || json.shoppingList || json.shopList || json.plannerok_shop_v4 || json.plannerok_shop_v3 || json.plannerok_shop_v2 || json.plannerok_shop || json.shopping;
+        if (resolvedShopItems && Array.isArray(resolvedShopItems)) {
+          setShopItems(resolvedShopItems);
+          localStorage.setItem(STORAGE_KEYS.shop, JSON.stringify(resolvedShopItems));
+        }
+
+        // Resolve recipes/journal with fallbacks
+        const resolvedRecipes = json.recipes || json.savedRecipes || json.journal || json.plannerok_journal_v4 || json.plannerok_journal || json.recipeList;
+        if (resolvedRecipes && Array.isArray(resolvedRecipes)) {
+          setSavedRecipes(resolvedRecipes);
+          localStorage.setItem(STORAGE_KEYS.journal, JSON.stringify(resolvedRecipes));
+        }
+
+        if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+          new Notification(language === 'ua' ? 'Дані відновлено! 🔄' : 'Dane przywrócone! 🔄', {
+            body: language === 'ua' ? 'Ваш бекап успішно завантажено в додаток.' : 'Twoja kopia zapasowa została pomyślnie zaimportowana.',
+            icon: '/icon.svg'
+          });
+        } else {
+          alert(language === 'ua' ? 'Дані успішно відновлено!' : 'Dane pomyślnie przywrócone!');
+        }
+      } catch (err) {
+        console.error("Import fail:", err);
+        alert(language === 'ua' ? 'Помилка при читанні файлу бекапу' : 'Błąd podczas odczytu pliku kopii zapasowej');
+      }
+    };
+    reader.readAsText(file);
+  };
 
   // Safe notification wrapper
   const safeNotify = (title: string, options?: NotificationOptions) => {
@@ -547,7 +633,7 @@ function AppContent() {
       motivation: 'Мотивація від AI',
       updateAnalysis: 'Оновити аналіз',
       totalEstimated: 'Орієнтовна сума:',
-      retailers: 'Середня ціна (Biedronka, Lidl, Auchan, Kaufland)',
+      retailers: 'Середня ціна (Lidl, Biedronka)',
       whatToCook: 'Що приготувати? (AI Рецепт)',
       saveRecipe: 'Зберегти у Журнал',
       recipeSaved: 'Рецепт збережено!',
@@ -579,7 +665,15 @@ function AppContent() {
       welcome: 'Ласкаво просимо!',
       letsGo: 'Зрозуміло, поїхали!',
       changeLogTitle: 'Що нового:',
-      installLinkText: '\n\n📲 PlannerOk: '
+      installLinkText: '\n\n📲 PlannerOk: ',
+      offers: 'Акції 🔥',
+      myOffers: 'Діючі акції магазинів',
+      allStores: 'Всі магазини',
+      onlyLidlBiedronka: 'Лише Lidl та Biedronka',
+      zabkaOffers: 'Акції у Żabka',
+      validityPeriod: 'Термін дії',
+      detectingOffers: 'Виявлення діючих акцій у Lidl, Biedronka та Żabka за допомогою ШІ...',
+      refreshedJustNow: 'Оновлено щойно',
     },
     pl: {
       title: 'PlannerOk',
@@ -598,7 +692,7 @@ function AppContent() {
       motivation: 'Motywacja AI',
       updateAnalysis: 'Aktualizuj analizę',
       totalEstimated: 'Szacunkowa suma:',
-      retailers: 'Średnia cena (Biedronka, Lidl, Auchan, Kaufland)',
+      retailers: 'Średnia cena (Lidl, Biedronka)',
       whatToCook: 'AI Przepis',
       saveRecipe: 'Zapisz w Dzienniku',
       recipeSaved: 'Przepis zapisany!',
@@ -630,7 +724,15 @@ function AppContent() {
       welcome: 'Witamy!',
       letsGo: 'Rozumiem, zaczynamy!',
       changeLogTitle: 'Co nowego:',
-      installLinkText: '\n\n📲 PlannerOk: '
+      installLinkText: '\n\n📲 PlannerOk: ',
+      offers: 'Promocje 🔥',
+      myOffers: 'Aktualne promocje sklepów',
+      allStores: 'Wszystkie sklepy',
+      onlyLidlBiedronka: 'Tylko Lidl i Biedronka',
+      zabkaOffers: 'Promocje w Żabce',
+      validityPeriod: 'Okres obowiązywania',
+      detectingOffers: 'Wykrywanie aktualnych promocji w Lidl, Biedronka i Żabka przez AI...',
+      refreshedJustNow: 'Zaktualizowano przed chwilą',
     }
   }[language]), [language]);
 
@@ -685,6 +787,7 @@ function AppContent() {
   const items = useMemo(() => {
     if (activeTab === 'tasks') return sortedTasks;
     if (activeTab === 'shop') return sortedShopItems;
+    if (activeTab === 'offers') return [];
     return savedRecipes;
   }, [activeTab, sortedTasks, sortedShopItems, savedRecipes]);
 
@@ -930,7 +1033,7 @@ function AppContent() {
     }
     setIsComparingStores(true);
     try {
-      const res = await compareStores(activeUncompletedShopItems, force);
+      const res = await compareStores(activeUncompletedShopItems, selectedCompareStores, force);
       if (res) {
         setStoreComparison(res);
       }
@@ -1073,7 +1176,8 @@ function AppContent() {
           {[
             { id: 'tasks', icon: ListTodo, label: t.tasks },
             { id: 'shop', icon: ShoppingCart, label: t.shop },
-            { id: 'journal', icon: ClipboardList, label: t.journal }
+            { id: 'journal', icon: ClipboardList, label: t.journal },
+            { id: 'offers', icon: Zap, label: t.offers }
           ].map(tab => (
             <button
               key={tab.id}
@@ -1138,7 +1242,7 @@ function AppContent() {
           layout
           className="glass rounded-[32px] p-6 shadow-2xl space-y-4"
         >
-          {activeTab !== 'journal' && (
+          {activeTab !== 'journal' && activeTab !== 'offers' && (
             <>
               {/* Date and Time Display */}
               <div className="text-center mb-6 py-3 border-b border-rose/10 bg-white/20 rounded-2xl">
@@ -1238,7 +1342,7 @@ function AppContent() {
           <div className="space-y-4">
             <div className="flex items-center justify-between px-1 mb-4">
               <h2 className="text-[10px] font-bold uppercase tracking-widest text-text-soft/60">
-                {activeTab === 'tasks' ? t.myTasks : activeTab === 'shop' ? t.myShop : t.myJournal}
+                {activeTab === 'tasks' ? t.myTasks : activeTab === 'shop' ? t.myShop : activeTab === 'offers' ? t.myOffers : t.myJournal}
               </h2>
               <div className="flex gap-2">
                 {activeTab === 'shop' && shopItems.length > 0 && (
@@ -1317,7 +1421,176 @@ function AppContent() {
 
             <div className="space-y-3 min-h-[100px]">
               <AnimatePresence mode="popLayout" initial={false}>
-                {items.length === 0 ? (
+                {activeTab === 'offers' ? (
+                  <div className="space-y-4">
+                    {/* Store Filter Pills */}
+                    <div className="flex gap-1 overflow-x-auto pb-1.5 scrollbar-thin scrollbar-thumb-rose/10 select-none">
+                      {[
+                        { id: 'all', label: language === 'ua' ? 'Всі акції' : 'Wszystkie' },
+                        { id: 'Biedronka', label: 'Biedronka 🐞' },
+                        { id: 'Lidl', label: 'Lidl 🛒' },
+                        { id: 'Żabka', label: 'Żabka 💚' }
+                      ].map(storeOpt => (
+                        <button
+                          key={storeOpt.id}
+                          onClick={() => setPromoStoreFilter(storeOpt.id)}
+                          className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-tight transition-all shrink-0 border ${
+                            promoStoreFilter === storeOpt.id
+                              ? 'bg-deep-rose border-transparent text-white shadow-sm'
+                              : 'bg-white/50 hover:bg-white/80 text-text-soft border-rose/10'
+                          }`}
+                        >
+                          {storeOpt.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Category Filter Chips */}
+                    <div className="flex gap-1 overflow-x-auto pb-1 select-none">
+                      {['всі', 'Бакалія', "М'ясо", 'Молочні продукти', 'Напої', 'Овочі та фрукти', 'Снеки'].map(cat => (
+                        <button
+                          key={cat}
+                          onClick={() => setPromoCategory(cat)}
+                          className={`px-3 py-1 rounded-full text-[10px] font-bold transition-all shrink-0 border ${
+                            promoCategory === cat
+                              ? 'bg-linear-to-r from-rose to-peach border-transparent text-white'
+                              : 'bg-white/40 hover:bg-white/60 text-text-soft/80 border-rose/5'
+                          }`}
+                        >
+                          {cat === 'всі' ? (language === 'ua' ? 'Всі категорії' : 'Wszystkie') : cat}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Force AI Refresh Banner */}
+                    <div className="flex justify-between items-center bg-white/40 p-2.5 rounded-2xl border border-rose/5 text-xs text-text-soft">
+                      <span className="text-[10px] uppercase font-black tracking-tight opacity-75">
+                        {language === 'ua' ? 'Оновлено ШІ в реальному часі' : 'Aktualizowane przez AI'}
+                      </span>
+                      <button
+                        onClick={async () => {
+                          setIsFetchingPromotions(true);
+                          const res = await getPromotions(promoCategory, true);
+                          setPromotions(res);
+                          setIsFetchingPromotions(false);
+                        }}
+                        disabled={isFetchingPromotions}
+                        className="flex items-center gap-1.5 px-3 py-1 bg-rose text-white text-[10px] font-black uppercase tracking-tight rounded-xl hover:bg-deep-rose transition-all disabled:opacity-50"
+                      >
+                        <RefreshCw size={10} className={isFetchingPromotions ? "animate-spin" : ""} />
+                        {language === 'ua' ? 'Оновити ШІ' : 'Skanuj AI'}
+                      </button>
+                    </div>
+
+                    {/* Promotions List */}
+                    {isFetchingPromotions ? (
+                      <div className="flex flex-col items-center justify-center py-16 space-y-3">
+                        <Loader2 className="animate-spin text-deep-rose" size={32} />
+                        <p className="text-xs text-text-soft text-center max-w-xs">{t.detectingOffers}</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {(() => {
+                          const filteredPromos = promotions.filter(p => {
+                            if (promoStoreFilter === 'all') return true;
+                            return p.store.toLowerCase() === promoStoreFilter.toLowerCase();
+                          });
+
+                          if (filteredPromos.length === 0) {
+                            return (
+                              <div className="text-center py-12 text-text-soft italic text-xs">
+                                {language === 'ua' ? 'Не знайдено акцій у цій категорії. Натисніть "Оновити ШІ" для завантаження.' : 'Brak promocji w tej kategorii. Kliknij "Skanuj AI", aby wyszukać.'}
+                              </div>
+                            );
+                          }
+
+                          return filteredPromos.map((promo) => {
+                            const isLidl = promo.store.toLowerCase() === 'lidl';
+                            const isBiedronka = promo.store.toLowerCase() === 'biedronka';
+                            
+                            const storeTheme = isLidl 
+                              ? { border: 'border-blue-200/40', badge: 'bg-blue-50 text-blue-700 border-blue-200', tag: 'Lidl' }
+                              : isBiedronka
+                                ? { border: 'border-amber-200/40', badge: 'bg-amber-50 text-amber-850 border-amber-200', tag: 'Biedronka 🐞' }
+                                : { border: 'border-emerald-200/40', badge: 'bg-emerald-50 text-emerald-850 border-emerald-200', tag: 'Żabka 💚' };
+
+                            return (
+                              <motion.div
+                                layout
+                                key={promo.id}
+                                initial={{ opacity: 0, scale: 0.95 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                className={`p-4 glass rounded-2xl flex flex-col gap-2.5 border ${storeTheme.border} relative shadow-sm hover:shadow-md transition-all`}
+                              >
+                                <div className="flex justify-between items-start">
+                                  <div className="flex flex-col gap-1">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                      <span className={`px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-tight border ${storeTheme.badge}`}>
+                                        {storeTheme.tag}
+                                      </span>
+                                      <span className="px-1.5 py-0.5 rounded-lg bg-rose/5 text-deep-rose text-[9px] font-black uppercase tracking-tight border border-rose/10">
+                                        {promo.discountText}
+                                      </span>
+                                    </div>
+                                    <h3 className="text-sm font-bold text-text-main mt-0.5">{promo.product}</h3>
+                                  </div>
+
+                                  <div className="text-right shrink-0">
+                                    <p className="text-base font-black text-deep-rose tabular-nums leading-none">
+                                      {promo.price.toFixed(2)} <span className="text-xs font-bold">PLN</span>
+                                    </p>
+                                    <p className="text-xs text-text-soft/60 strike line-through font-medium tabular-nums mt-0.5">
+                                      {promo.originalPrice.toFixed(2)} PLN
+                                    </p>
+                                  </div>
+                                </div>
+
+                                <div className="flex justify-between items-center pt-2.5 border-t border-rose/10 mt-1">
+                                  <div className="flex items-center gap-1.5 text-text-soft/80 text-[10px]">
+                                    <Calendar size={11} className="text-orange-400" />
+                                    <span>{t.validityPeriod}: <strong className="font-semibold">{promo.startDate.split('-').reverse().slice(0,2).join('.')} - {promo.endDate.split('-').reverse().slice(0,2).join('.')}</strong></span>
+                                  </div>
+
+                                  <button
+                                    onClick={() => {
+                                      const textToAdd = `${promo.product} (${promo.store})`;
+                                      const newItem: Item = {
+                                        id: uuidv4(),
+                                        text: textToAdd,
+                                        done: false,
+                                        added: new Date().toISOString(),
+                                        price: promo.price,
+                                        type: 'shop'
+                                      };
+                                      setShopItems(prev => {
+                                        const next = [newItem, ...prev];
+                                        localStorage.setItem(STORAGE_KEYS.shop, JSON.stringify(next));
+                                        return next;
+                                      });
+                                      
+                                      if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+                                        new Notification(language === 'ua' ? 'Додано до кошика! 🛒' : 'Dodano do koszyka! 🛒', {
+                                          body: `${promo.product} за ${promo.price} PLN додано.`,
+                                          icon: '/icon.svg'
+                                        });
+                                      } else {
+                                        alert(language === 'ua' ? 'Продукт додано до списку покупок!' : 'Produkt dodany do listy zakupów!');
+                                      }
+                                    }}
+                                    className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-600 text-[10px] font-black uppercase tracking-tight rounded-xl flex items-center gap-1.5 border border-emerald-100 active:scale-95 transition-all shadow-xs"
+                                  >
+                                    <ShoppingCart size={11} />
+                                    {language === 'ua' ? 'В кошик' : 'Kup'}
+                                  </button>
+                                </div>
+                              </motion.div>
+                            );
+                          });
+                        })()}
+                      </div>
+                    )}
+                  </div>
+                ) : items.length === 0 ? (
                   <motion.div
                     key="empty"
                     initial={{ opacity: 0, scale: 0.9 }}
@@ -1349,7 +1622,9 @@ function AppContent() {
                          </div>
                          <div>
                             <div className="text-sm font-bold text-text-main leading-tight">{recipe.text}</div>
-                            <div className="text-[10px] text-text-soft/60 uppercase font-black tracking-tighter mt-0.5">{t.addedAt} {new Date(recipe.added).toLocaleDateString()}</div>
+                            <div className="text-[10px] text-text-soft/60 uppercase font-black tracking-tighter mt-0.5">
+                              {t.addedAt} {recipe.added && !isNaN(Date.parse(recipe.added)) ? new Date(recipe.added).toLocaleDateString(language === 'ua' ? 'uk-UA' : 'pl-PL') : '—'}
+                            </div>
                          </div>
                       </div>
                       <button
@@ -1357,7 +1632,7 @@ function AppContent() {
                           e.stopPropagation();
                           setSavedRecipes(prev => prev.filter(r => r.id !== recipe.id));
                         }}
-                        className="opacity-0 group-hover:opacity-100 p-2 text-rose hover:bg-rose/10 rounded-xl transition-all"
+                        className="opacity-70 md:opacity-0 md:group-hover:opacity-100 p-2 text-rose hover:bg-rose/10 rounded-xl transition-all"
                       >
                         <Trash2 size={16} />
                       </button>
@@ -1455,12 +1730,12 @@ function AppContent() {
                     </motion.div>
                   </div>
 
-                  <div className="mt-4 p-4 rounded-2xl bg-linear-to-br from-amber-50/60 to-orange-50/60 border border-orange-100 space-y-3">
+                  <div className="mt-4 p-4 rounded-2xl bg-linear-to-br from-amber-50/60 to-orange-50/60 border border-orange-100 space-y-4">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <Sparkles className="text-orange-500 animate-pulse" size={16} />
                         <span className="text-xs font-black uppercase text-orange-800 tracking-wider">
-                          {language === 'ua' ? 'Порівняння Biedronka vs Lidl від ШІ' : 'Porównanie Biedronka vs Lidl od AI'}
+                          {language === 'ua' ? 'Порівняння супермаркетів від ШІ' : 'Porównanie supermarketów od AI'}
                         </span>
                       </div>
                       
@@ -1476,57 +1751,101 @@ function AppContent() {
                       )}
                     </div>
 
+                    {/* Store Choice Option Chips */}
+                    <div className="space-y-1 bg-white/40 p-2.5 rounded-xl border border-orange-100/50">
+                      <div className="text-[9px] font-black uppercase text-orange-800/80 tracking-wider">
+                        {language === 'ua' ? 'Оберіть магазини для порівняння:' : 'Wybierz sklepy do porównania:'}
+                      </div>
+                      <div className="flex flex-wrap gap-1 pt-1">
+                        {[
+                          { id: 'Lidl', label: 'Lidl 🛒' },
+                          { id: 'Biedronka', label: 'Biedronka 🐞' },
+                          { id: 'Żabka', label: 'Żabka 💚' },
+                          { id: 'Auchan', label: 'Auchan 🔴' },
+                          { id: 'Kaufland', label: 'Kaufland 📦' },
+                          { id: 'Carrefour', label: 'Carrefour 🔵' }
+                        ].map(store => {
+                          const isSelected = selectedCompareStores.includes(store.id);
+                          return (
+                            <button
+                              key={store.id}
+                              type="button"
+                              onClick={() => {
+                                setSelectedCompareStores(prev => {
+                                  if (prev.includes(store.id)) {
+                                    if (prev.length <= 2) return prev; // Keep at least 2
+                                    return prev.filter(s => s !== store.id);
+                                  } else {
+                                    return [...prev, store.id];
+                                  }
+                                });
+                              }}
+                              className={`px-2.5 py-1.5 rounded-xl text-[9px] font-bold uppercase tracking-tight transition-all border ${
+                                isSelected
+                                  ? 'bg-orange-500 text-white border-transparent shadow-xs'
+                                  : 'bg-white/70 hover:bg-white text-gray-600 border-orange-100'
+                              }`}
+                            >
+                              {store.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
                     {isComparingStores ? (
-                      <div className="flex flex-col items-center justify-center py-4 text-center">
-                        <Loader2 size={18} className="animate-spin text-orange-500 mb-1" />
-                        <span className="text-[10px] uppercase font-black tracking-wider text-orange-800/60">
-                          {language === 'ua' ? 'Gemini аналізує ціни...' : 'Gemini analizuje ceny...'}
+                      <div className="flex flex-col items-center justify-center py-6 text-center bg-white/30 rounded-xl border border-dashed border-orange-200">
+                        <Loader2 size={24} className="animate-spin text-orange-500 mb-2" />
+                        <span className="text-[10px] uppercase font-black tracking-wider text-orange-850/80 animate-pulse font-bold">
+                          {language === 'ua' ? 'Gemini аналізує ціни в реальному часі...' : 'Gemini analizuje ceny w czasie rzeczywistym...'}
                         </span>
                       </div>
                     ) : storeComparison ? (
                       <div className="space-y-3">
-                        <div className="grid grid-cols-2 gap-3 text-center">
-                          {/* Biedronka */}
-                          <div className={`p-3 rounded-xl border transition-all ${storeComparison.cheaperStore === 'Biedronka' ? 'bg-emerald-500/10 border-emerald-300 ring-2 ring-emerald-500/30' : 'bg-white/40 border-gray-100'}`}>
-                            <div className="text-[10px] font-black uppercase text-gray-500 flex items-center justify-center gap-1">
-                              🐞 Biedronka
-                              {storeComparison.cheaperStore === 'Biedronka' && (
-                                <span className="bg-emerald-100 text-emerald-800 text-[8px] px-1 py-0.2 rounded-sm font-black whitespace-nowrap">
-                                  {language === 'ua' ? 'ДЕШЕВШЕ' : 'TANIEJ'}
-                                </span>
-                              )}
-                            </div>
-                            <div className="text-base font-serif font-black text-gray-800 mt-1">
-                              {storeComparison.biedronkaTotal.toFixed(2)} PLN
-                            </div>
-                          </div>
+                        <div className="grid grid-cols-2 xs:grid-cols-2 sm:grid-cols-3 gap-2 text-center">
+                          {(() => {
+                            const totalsMap = storeComparison.totals || {
+                              "Biedronka": storeComparison.biedronkaTotal || 0,
+                              "Lidl": storeComparison.lidlTotal || 0
+                            };
+                            return Object.entries(totalsMap).map(([storeName, totalPrice]) => {
+                              const isCheapest = storeComparison.cheaperStore.toLowerCase().trim() === storeName.toLowerCase().trim();
+                              let emoji = '🛒';
+                              if (storeName.toLowerCase().includes('biedronka')) emoji = '🐞';
+                              else if (storeName.toLowerCase().includes('zabka') || storeName.toLowerCase().includes('żabka')) emoji = '💚';
+                              else if (storeName.toLowerCase().includes('auchan')) emoji = '🔴';
+                              else if (storeName.toLowerCase().includes('kaufland')) emoji = '📦';
+                              else if (storeName.toLowerCase().includes('carrefour')) emoji = '🔵';
 
-                          {/* Lidl */}
-                          <div className={`p-3 rounded-xl border transition-all ${storeComparison.cheaperStore === 'Lidl' ? 'bg-emerald-500/10 border-emerald-300 ring-2 ring-emerald-500/30' : 'bg-white/40 border-gray-100'}`}>
-                            <div className="text-[10px] font-black uppercase text-gray-500 flex items-center justify-center gap-1">
-                              🟡 Lidl
-                              {storeComparison.cheaperStore === 'Lidl' && (
-                                <span className="bg-emerald-100 text-emerald-800 text-[8px] px-1 py-0.2 rounded-sm font-black whitespace-nowrap">
-                                  {language === 'ua' ? 'ДЕШЕВШЕ' : 'TANIEJ'}
-                                </span>
-                              )}
-                            </div>
-                            <div className="text-base font-serif font-black text-gray-800 mt-1">
-                              {storeComparison.lidlTotal.toFixed(2)} PLN
-                            </div>
-                          </div>
+                              return (
+                                <div key={storeName} className={`p-2.5 rounded-xl border transition-all ${isCheapest ? 'bg-emerald-500/10 border-emerald-300 ring-2 ring-emerald-500/15' : 'bg-white/40 border-gray-100'}`}>
+                                  <div className="text-[9px] font-black uppercase text-gray-500 flex items-center justify-center gap-1 flex-wrap">
+                                    <span>{emoji} {storeName}</span>
+                                    {isCheapest && (
+                                      <span className="bg-emerald-100 text-emerald-800 text-[7px] px-1 py-0.2 rounded-sm font-black whitespace-nowrap">
+                                        {language === 'ua' ? 'ДЕШЕВШЕ' : 'TANIEJ'}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="text-sm font-serif font-black text-gray-800 mt-1">
+                                    {totalPrice.toFixed(2)} <span className="text-[10px]">PLN</span>
+                                  </div>
+                                </div>
+                              );
+                            });
+                          })()}
                         </div>
 
                         <div className="flex items-center justify-between px-1 text-xs">
-                          <span className="font-bold text-gray-600">
-                            {language === 'ua' ? 'Різниця:' : 'Różnica:'}
+                          <span className="font-bold text-orange-950">
+                            {language === 'ua' ? 'Максимальна економія:' : 'Maksymalne oszczędności:'}
                           </span>
-                          <span className="font-serif font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100">
+                          <span className="font-serif font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100">
                              {storeComparison.differencePLN.toFixed(2)} PLN (~{storeComparison.differencePercent}%)
                           </span>
                         </div>
 
-                        <div className="p-3 bg-white/70 rounded-xl text-[11px] leading-relaxed text-gray-700 italic border border-orange-50/50">
+                        <div className="p-3 bg-white/70 rounded-xl text-[10px] leading-relaxed text-gray-700 italic border border-orange-50/50">
                           {storeComparison.explanation}
                         </div>
                       </div>
@@ -1537,10 +1856,10 @@ function AppContent() {
                           className="flex items-center gap-2 py-2 px-6 bg-linear-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-black uppercase text-[10px] tracking-widest rounded-xl shadow-md transition-all active:scale-95"
                         >
                           <Sparkles size={12} />
-                          {language === 'ua' ? 'Порівняти ціни Biedronka та Lidl' : 'Porównaj ceny Biedronka i Lidl'}
+                          {language === 'ua' ? `Порівняти ціни (${selectedCompareStores.length}) магазинів` : `Porównaj ceny w (${selectedCompareStores.length}) sklepach`}
                         </button>
-                        <span className="text-[9px] text-orange-800/60 mt-1.5 uppercase font-bold tracking-tight">
-                          {language === 'ua' ? 'Аналіз кошика за допомогою ШІ' : 'Analiza koszyka przez AI'}
+                        <span className="text-[9px] text-orange-850/60 mt-1.5 uppercase font-bold tracking-tight text-center px-2">
+                          {language === 'ua' ? 'ШІ-розрахунок вартості вашого кошика у обраних точках' : 'AI-obliczenie wartości Twojego koszyka w wybranych punktach'}
                         </span>
                       </div>
                     )}
@@ -1651,17 +1970,33 @@ function AppContent() {
                 <Zap size={10} className="text-deep-rose" />
                 {language === 'ua' ? 'Стабільність системи' : 'Stabilność systemu'}
               </div>
-              <div className="flex gap-2 w-full">
-                <button 
-                  onClick={exportData}
-                  className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-emerald-50 text-emerald-600 text-[10px] font-black uppercase tracking-tight border border-emerald-100 hover:bg-emerald-100 transition-all active:scale-95 shadow-sm"
-                >
-                  <Download size={12} />
-                  {language === 'ua' ? 'Зберегти дані' : 'Zapisz dane'}
-                </button>
+              <div className="flex flex-col gap-2 w-full">
+                <div className="flex gap-2 w-full">
+                  <button 
+                    onClick={exportData}
+                    className="flex-1 flex items-center justify-center gap-2 px-3 py-3 rounded-2xl bg-emerald-50 text-emerald-600 text-[10px] font-black uppercase tracking-tight border border-emerald-100 hover:bg-emerald-100 transition-all active:scale-95 shadow-sm"
+                  >
+                    <Download size={12} />
+                    {language === 'ua' ? 'Зберегти дані' : 'Zapisz dane'}
+                  </button>
+                  <button 
+                    onClick={() => document.getElementById('restore-file-input')?.click()}
+                    className="flex-1 flex items-center justify-center gap-2 px-3 py-3 rounded-2xl bg-sky-50 text-sky-600 text-[10px] font-black uppercase tracking-tight border border-sky-100 hover:bg-sky-100 transition-all active:scale-95 shadow-sm"
+                  >
+                    <RefreshCw size={12} />
+                    {language === 'ua' ? 'Відновити дані' : 'Przywróć dane'}
+                  </button>
+                  <input 
+                    type="file" 
+                    id="restore-file-input" 
+                    accept=".json" 
+                    onChange={importData} 
+                    className="hidden" 
+                  />
+                </div>
                 <button 
                   onClick={fullReset}
-                  className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-rose/5 text-deep-rose text-[10px] font-black uppercase tracking-tight border border-rose/10 hover:bg-rose/10 transition-all active:scale-95 shadow-sm"
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-rose/5 text-deep-rose text-[10px] font-black uppercase tracking-tight border border-rose/10 hover:bg-rose/10 transition-all active:scale-95 shadow-sm"
                 >
                   <Trash2 size={12} />
                   {language === 'ua' ? 'Очищення кешу' : 'Czyść cache'}
@@ -1715,13 +2050,20 @@ function AppContent() {
                   {recipe ? (
                     <>
                       <div className="flex justify-end gap-2 mb-4">
-                        <button
-                          onClick={saveRecipeToJournal}
-                          className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-xl text-xs font-bold hover:bg-green-600 transition-all shadow-sm active:scale-95"
-                        >
-                          <Plus size={14} />
-                          {t.saveRecipe}
-                        </button>
+                        {savedRecipes.some(r => r.recipeContent === recipe) ? (
+                          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/10 text-emerald-600 rounded-xl text-xs font-black uppercase border border-emerald-300">
+                            <Check size={14} />
+                            {language === 'ua' ? 'Збережено' : 'Zapisano'}
+                          </div>
+                        ) : (
+                          <button
+                            onClick={saveRecipeToJournal}
+                            className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-xl text-xs font-bold hover:bg-green-600 transition-all shadow-sm active:scale-95"
+                          >
+                            <Plus size={14} />
+                            {t.saveRecipe}
+                          </button>
+                        )}
                         <button
                           onClick={shareRecipe}
                           className="flex items-center gap-2 px-4 py-2 bg-rose/10 text-deep-rose rounded-xl text-xs font-bold hover:bg-rose/20 transition-all ripple"

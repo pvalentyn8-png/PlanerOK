@@ -4,6 +4,7 @@ const cache = {
   prices: new Map<string, Record<string, number>>(),
   recipes: new Map<string, string>(),
   compare: new Map<string, any>(),
+  promotions: new Map<string, any>(),
 };
 
 const MAX_CACHE_SIZE = 50;
@@ -21,25 +22,59 @@ function cacheSet<T>(map: Map<string, T>, key: string, value: T) {
 // =============================================================================
 
 export interface StoreComparison {
-  cheaperStore: 'Biedronka' | 'Lidl';
-  biedronkaTotal: number;
-  lidlTotal: number;
+  cheaperStore: string;
+  totals: Record<string, number>;
   differencePLN: number;
   differencePercent: number;
   explanation: string;
+  biedronkaTotal?: number;
+  lidlTotal?: number;
 }
 
-export async function compareStores(items: string[], force: boolean = false): Promise<StoreComparison | null> {
+export interface Promotion {
+  id: string;
+  store: 'Lidl' | 'Biedronka' | 'Żabka';
+  product: string;
+  price: number;
+  originalPrice: number;
+  discountText: string;
+  startDate: string;
+  endDate: string;
+  category: string;
+}
+
+export async function getPromotions(category: string = "всі", force: boolean = false): Promise<Promotion[]> {
+  const cacheKey = category;
+  if (!force && cache.promotions.has(cacheKey)) return cache.promotions.get(cacheKey)!;
+
+  try {
+    const response = await fetch("/api/ai/promotions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ category })
+    });
+    const data = await response.json();
+    const result = data.result || [];
+    cacheSet(cache.promotions, cacheKey, result);
+    return result;
+  } catch (error) {
+    console.error("getPromotions Client Fetch Error:", error);
+    return [];
+  }
+}
+
+export async function compareStores(items: string[], stores?: string[], force: boolean = false): Promise<StoreComparison | null> {
   if (items.length === 0) return null;
 
-  const cacheKey = [...items].sort().join("|");
+  const sortedStores = stores ? [...stores].sort().join(",") : "Lidl,Biedronka";
+  const cacheKey = `${[...items].sort().join("|")}_for_${sortedStores}`;
   if (!force && cache.compare.has(cacheKey)) return cache.compare.get(cacheKey)!;
 
   try {
     const response = await fetch("/api/ai/compare-stores", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ items })
+      body: JSON.stringify({ items, stores })
     });
     const data = await response.json();
     const result = data.result || null;
